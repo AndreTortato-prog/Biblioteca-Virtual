@@ -1,0 +1,1020 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Gestão de Biblioteca</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React e ReactDOM -->
+    <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+    <!-- Babel -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+    </style>
+    <link rel="icon" type="image/png" href="logo.png">
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen">
+<div id="root"></div>
+
+<script type="text/babel">
+    const { useState, useEffect, useMemo } = React;
+
+    // Configuração inteligente da URL do servidor Node.js
+    const API_BASE = (window.location.protocol === 'file:' || !window.location.host.includes('3000'))
+        ? 'http://localhost:3000'
+        : '';
+
+    // Ícones SVG Inline
+    const IconBook = () => (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+        </svg>
+    );
+
+    const IconUsers = () => (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+        </svg>
+    );
+
+    const IconRepeat = () => (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+        </svg>
+    );
+
+    const IconDatabase = () => (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
+        </svg>
+    );
+
+    const IconPlus = () => (
+        <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+        </svg>
+    );
+
+    const IconSearch = () => (
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+        </svg>
+    );
+
+    const IconLogout = () => (
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+        </svg>
+    );
+
+    function App() {
+        // Estado de Autenticação com campos limpos (obriga o usuário a digitar)
+        const [isAuthenticated, setIsAuthenticated] = useState(false);
+        const [loginForm, setLoginForm] = useState({ email: '', password: '' });
+        const [loginError, setLoginError] = useState('');
+
+        const [activeTab, setActiveTab] = useState('dashboard');
+        const [loading, setLoading] = useState(false);
+        const [dbStatus, setDbStatus] = useState('checking');
+
+        // Estados de Dados Vindos do PostgreSQL via Node.js
+        const [users, setUsers] = useState([]);
+        const [books, setBooks] = useState([]);
+        const [loans, setLoans] = useState([]);
+
+        // Filtros e Modais
+        const [bookSearch, setBookSearch] = useState('');
+        const [showAddBookModal, setShowAddBookModal] = useState(false);
+        const [showAddUserModal, setShowAddUserModal] = useState(false);
+        const [showAddLoanModal, setShowAddLoanModal] = useState(false);
+
+        // Formulários
+        const [newBook, setNewBook] = useState({ titulo: '', autor: '', isbn: '', cdd: '', categoria: 'Administração', palavras_chave: '', ano_publicacao: 2024, quantidade: 1 });
+        const [newUser, setNewUser] = useState({ nome: '', email: '', data_nascimento: '', idade: 0 });
+        const [newLoan, setNewLoan] = useState({ usuario_id: '', livro_id: '', dias: 14 });
+
+        // Carregar Dados da API do Node.js ao Autenticar
+        useEffect(() => {
+            if (isAuthenticated) {
+                loadAllData();
+            }
+        }, [isAuthenticated]);
+
+        const loadAllData = async () => {
+            setLoading(true);
+            try {
+                const [resBooks, resUsers, resLoans] = await Promise.all([
+                    fetch(`${API_BASE}/api/livros`).then(r => {
+                        if (!r.ok) throw new Error("Erro na API de livros");
+                        return r.json();
+                    }),
+                    fetch(`${API_BASE}/api/usuarios`).then(r => {
+                        if (!r.ok) throw new Error("Erro na API de usuários");
+                        return r.json();
+                    }),
+                    fetch(`${API_BASE}/api/emprestimos`).then(r => {
+                        if (!r.ok) throw new Error("Erro na API de empréstimos");
+                        return r.json();
+                    })
+                ]);
+
+                if (Array.isArray(resBooks)) setBooks(resBooks);
+                if (Array.isArray(resUsers)) {
+                    setUsers(resUsers);
+                    if (resUsers.length > 0) setNewLoan(prev => ({ ...prev, usuario_id: resUsers[0].id }));
+                }
+                if (Array.isArray(resLoans)) setLoans(resLoans);
+                setDbStatus('connected');
+            } catch (err) {
+                console.error("Erro ao carregar dados da API Node.js/PostgreSQL:", err);
+                setDbStatus('error');
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        // Cálculos de Estatísticas
+        const totalLivros = useMemo(() => books.reduce((acc, b) => acc + (parseInt(b.quantidade) || 0), 0), [books]);
+        const livrosEmprestados = useMemo(() => loans.filter(l => l.status === 'EMPRESTADO').length, [loans]);
+        const livrosDisponiveis = useMemo(() => books.reduce((acc, b) => acc + (parseInt(b.disponiveis) || 0), 0), [books]);
+
+        // Handlers de Envio para a API
+        const handleAddBook = async (e) => {
+            e.preventDefault();
+            if (!newBook.titulo || !newBook.autor) return;
+
+            try {
+                const response = await fetch(`${API_BASE}/api/livros`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(newBook)
+                });
+
+                if (response.ok) {
+                    setNewBook({ titulo: '', autor: '', isbn: '', cdd: '', categoria: 'Administração', palavras_chave: '', ano_publicacao: 2024, quantidade: 1 });
+                    setShowAddBookModal(false);
+                    loadAllData();
+                } else {
+                    const errData = await response.json();
+                    alert("❌ Erro ao cadastrar livro no PostgreSQL: " + (errData.error || 'Verifique o servidor.'));
+                }
+            } catch (err) {
+                alert("❌ Não foi possível conectar ao servidor Node.js!\nCertifique-se de executar 'node server.js'.");
+            }
+        };
+
+        const handleAddUser = async (e) => {
+            e.preventDefault();
+            if (!newUser.nome || !newUser.email || !newUser.data_nascimento) return;
+
+            try {
+                const response = await fetch(`${API_BASE}/api/usuarios`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(newUser)
+                });
+
+                if (response.ok) {
+                    setNewUser({ nome: '', email: '', data_nascimento: '', idade: 0 });
+                    setShowAddUserModal(false);
+                    loadAllData();
+                } else {
+                    const errData = await response.json();
+                    alert("❌ Erro ao cadastrar leitor no PostgreSQL: " + (errData.error || 'Erro no servidor'));
+                }
+            } catch (err) {
+                alert("❌ Não foi possível conectar ao servidor Node.js!");
+            }
+        };
+
+        const handleAddLoan = async (e) => {
+            e.preventDefault();
+            if (!newLoan.usuario_id || !newLoan.livro_id) {
+                alert("Selecione o leitor e o livro.");
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/api/emprestimos`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(newLoan)
+                });
+
+                if (response.ok) {
+                    setShowAddLoanModal(false);
+                    loadAllData();
+                } else {
+                    const errData = await response.json();
+                    alert("❌ Erro no empréstimo: " + (errData.error || 'Livro indisponível'));
+                }
+            } catch (err) {
+                alert("❌ Não foi possível conectar ao servidor Node.js!");
+            }
+        };
+
+        const handleReturnLoan = async (loanId) => {
+            try {
+                const response = await fetch(`${API_BASE}/api/emprestimos/${loanId}/devolver`, {
+                    method: 'PUT'
+                });
+
+                if (response.ok) {
+                    loadAllData();
+                } else {
+                    alert("❌ Erro ao devolver o livro no PostgreSQL.");
+                }
+            } catch (err) {
+                alert("❌ Erro ao conectar com o servidor Node.js!");
+            }
+        };
+
+        const filteredBooks = books.filter(b =>
+            (b.titulo && b.titulo.toLowerCase().includes(bookSearch.toLowerCase())) ||
+            (b.autor && b.autor.toLowerCase().includes(bookSearch.toLowerCase())) ||
+            (b.categoria && b.categoria.toLowerCase().includes(bookSearch.toLowerCase())) ||
+            (b.cdd && b.cdd.toLowerCase().includes(bookSearch.toLowerCase())) ||
+            (b.palavras_chave && b.palavras_chave.toLowerCase().includes(bookSearch.toLowerCase()))
+        );
+
+        // Validação do Login
+        const handleLogin = async (e) => {
+            e.preventDefault();
+            if (!loginForm.email || !loginForm.password) {
+                setLoginError('Por favor, preencha o e-mail e a senha.');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/api/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(loginForm)
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    setLoginError('');
+                    setIsAuthenticated(true);
+                } else {
+                    if (loginForm.email === 'andretortato2812@gmail.com' && loginForm.password === '123456') {
+                        setLoginError('');
+                        setIsAuthenticated(true);
+                    } else {
+                        setLoginError(data.error || 'E-mail ou senha incorretos!');
+                    }
+                }
+            } catch (err) {
+                if (loginForm.email === 'andretortato2812@gmail.com' && loginForm.password === '123456') {
+                    setLoginError('');
+                    setIsAuthenticated(true);
+                } else {
+                    setLoginError('E-mail ou senha incorretos!');
+                }
+            }
+        };
+
+        const handleLogout = () => {
+            setIsAuthenticated(false);
+            setLoginForm({ email: '', password: '' });
+        };
+
+        // Tela de Login / Acesso Inicial (Campos em branco para digitação manual)
+        if (!isAuthenticated) {
+            return (
+                <div className="min-h-screen bg-slate-900 flex flex-col justify-between items-center p-4">
+                    <div className="w-full flex-1 flex items-center justify-center">
+                        <div className="bg-slate-800 border border-slate-700 rounded-2xl p-8 w-full max-w-md shadow-2xl space-y-6">
+                            <div className="text-center space-y-2">
+                                <div className="inline-flex p-3 bg-indigo-600 rounded-2xl text-white mb-2 shadow-lg shadow-indigo-600/30">
+                                    <IconBook />
+                                </div>
+                                <h1 className="text-2xl font-bold text-white">BiblioTech</h1>
+                                <p className="text-slate-400 text-sm">Sistema de Gestão de Biblioteca</p>
+                            </div>
+
+                            {loginError && (
+                                <div className="bg-red-500/10 border border-red-500/30 text-red-400 p-3 rounded-xl text-xs text-center font-medium">
+                                    {loginError}
+                                </div>
+                            )}
+
+                            <form onSubmit={handleLogin} className="space-y-4">
+                                <div>
+                                    <label className="block text-slate-300 text-sm mb-1 font-medium">E-mail de Acesso</label>
+                                    <input
+                                        type="text"
+                                        required
+                                        placeholder="Digite seu e-mail"
+                                        value={loginForm.email}
+                                        onChange={(e) => setLoginForm({ ...loginForm, email: e.target.value })}
+                                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 text-sm transition"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-slate-300 text-sm mb-1 font-medium">Senha</label>
+                                    <input
+                                        type="password"
+                                        required
+                                        placeholder="Digite sua senha"
+                                        value={loginForm.password}
+                                        onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })}
+                                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 text-sm transition"
+                                    />
+                                </div>
+
+                                <button
+                                    type="submit"
+                                    className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-3 rounded-xl transition shadow-lg shadow-indigo-600/20 text-sm mt-2"
+                                >
+                                    Acessar Biblioteca
+                                </button>
+                            </form>
+
+                            <div className="pt-4 border-t border-slate-700/60 text-center">
+                                <p className="text-xs text-slate-400">
+                                    🔑 <strong className="text-slate-300">Acesso:</strong> e-mail: <code className="text-indigo-400">andretortato2812@gmail.com</code> | senha: <code className="text-indigo-400">123456</code>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <footer className="py-4 text-center text-xs text-slate-400 border-t border-slate-800/80 w-full mt-4 font-medium">
+                        Programa desenvolvido pelo Prof. André Rafael Tortato
+                    </footer>
+                </div>
+            );
+        }
+
+        return (
+            <div className="flex flex-col md:flex-row min-h-screen">
+                {/* Sidebar */}
+                <aside className="w-full md:w-64 bg-slate-950 border-r border-slate-800 p-6 flex flex-col justify-between">
+                    <div>
+                        <div className="flex items-center space-x-3 mb-8">
+                            <div className="p-2 bg-indigo-600 rounded-lg text-white">
+                                <IconBook />
+                            </div>
+                            <div>
+                                <h1 className="font-bold text-lg text-white leading-none">BiblioTech</h1>
+                                <span className="text-xs text-slate-400">Gestão Acadêmica & Pessoal</span>
+                            </div>
+                        </div>
+
+                        <nav className="space-y-2">
+                            <button
+                                onClick={() => setActiveTab('dashboard')}
+                                className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition ${activeTab === 'dashboard' ? 'bg-indigo-600/20 text-indigo-400 border border-indigo-500/30' : 'text-slate-400 hover:bg-slate-900 hover:text-white'}`}
+                            >
+                                <IconBook />
+                                <span className="font-medium">Painel Principal</span>
+                            </button>
+
+                            <button
+                                onClick={() => setActiveTab('books')}
+                                className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition ${activeTab === 'books' ? 'bg-indigo-600/20 text-indigo-400 border border-indigo-500/30' : 'text-slate-400 hover:bg-slate-900 hover:text-white'}`}
+                            >
+                                <IconBook />
+                                <span className="font-medium">Acervo de Livros ({books.length})</span>
+                            </button>
+
+                            <button
+                                onClick={() => setActiveTab('users')}
+                                className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition ${activeTab === 'users' ? 'bg-indigo-600/20 text-indigo-400 border border-indigo-500/30' : 'text-slate-400 hover:bg-slate-900 hover:text-white'}`}
+                            >
+                                <IconUsers />
+                                <span className="font-medium">Leitores / Usuários ({users.length})</span>
+                            </button>
+
+                            <button
+                                onClick={() => setActiveTab('loans')}
+                                className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition ${activeTab === 'loans' ? 'bg-indigo-600/20 text-indigo-400 border border-indigo-500/30' : 'text-slate-400 hover:bg-slate-900 hover:text-white'}`}
+                            >
+                                <IconRepeat />
+                                <span className="font-medium">Empréstimos ({loans.length})</span>
+                            </button>
+
+                            <button
+                                onClick={() => setActiveTab('sql')}
+                                className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition ${activeTab === 'sql' ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30' : 'text-slate-400 hover:bg-slate-900 hover:text-white'}`}
+                            >
+                                <IconDatabase />
+                                <span className="font-medium">Código SQL & Guia</span>
+                            </button>
+                        </nav>
+                    </div>
+
+                    <div className="pt-6 border-t border-slate-800 space-y-4">
+                        <button
+                            onClick={handleLogout}
+                            className="w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-red-400 hover:bg-red-500/10 hover:text-red-300 transition text-sm font-medium border border-transparent hover:border-red-500/20"
+                        >
+                            <IconLogout />
+                            <span>Encerrar Sessão</span>
+                        </button>
+                        <div className="text-xs text-slate-400 text-center pt-3 border-t border-slate-900 font-medium leading-relaxed">
+                            Programa desenvolvido pelo Prof. André Rafael Tortato
+                        </div>
+                    </div>
+                </aside>
+
+                {/* Main Content */}
+                <main className="flex-1 p-6 md:p-10 overflow-y-auto flex flex-col justify-between">
+                    <div>
+                        {/* TAB: DASHBOARD */}
+                        {activeTab === 'dashboard' && (
+                            <div className="space-y-8">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                    <div>
+                                        <h2 className="text-2xl font-bold text-white">Visão Geral da Biblioteca</h2>
+                                        <p className="text-slate-400 text-sm">Dados gravados permanentemente no PostgreSQL.</p>
+                                    </div>
+                                    <div className="flex items-center space-x-3">
+                    <span className={`text-xs px-3 py-1.5 rounded-full font-medium flex items-center gap-1.5 border ${dbStatus === 'connected' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' : dbStatus === 'error' ? 'bg-red-500/10 text-red-400 border-red-500/30' : 'bg-amber-500/10 text-amber-400 border-amber-500/30'}`}>
+                      <span className={`w-2 h-2 rounded-full ${dbStatus === 'connected' ? 'bg-emerald-400 animate-pulse' : dbStatus === 'error' ? 'bg-red-400' : 'bg-amber-400'}`}></span>
+                        {dbStatus === 'connected' ? 'PostgreSQL Conectado' : dbStatus === 'error' ? 'Erro de Conexão DB' : 'Verificando...'}
+                    </span>
+                                        <button onClick={loadAllData} className="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-2 rounded-lg border border-slate-700">
+                                            🔄 Sincronizar Banco
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {dbStatus === 'error' && (
+                                    <div className="bg-red-500/10 border border-red-500/30 text-red-300 p-4 rounded-xl text-sm space-y-1">
+                                        <strong className="font-semibold block text-red-400">⚠️ Atenção: Não foi possível sincronizar com o banco PostgreSQL!</strong>
+                                        <p className="text-xs text-red-300/80">
+                                            1. Verifique se o comando <code className="bg-slate-900 px-1.5 py-0.5 rounded text-white">node server.js</code> está ativo no terminal.<br/>
+                                            2. Confira se a senha do seu PostgreSQL no arquivo <code className="bg-slate-900 px-1.5 py-0.5 rounded text-white">server.js</code> está igual à senha cadastrada no seu computador.
+                                        </p>
+                                    </div>
+                                )}
+
+                                {/* Cards de Métricas */}
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+                                    <div className="bg-slate-800/80 border border-slate-700/60 rounded-2xl p-5">
+                                        <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Total de Exemplares</span>
+                                        <div className="text-3xl font-extrabold text-white mt-2">{totalLivros}</div>
+                                        <span className="text-xs text-indigo-400 mt-1 inline-block">{books.length} títulos cadastrados</span>
+                                    </div>
+
+                                    <div className="bg-slate-800/80 border border-slate-700/60 rounded-2xl p-5">
+                                        <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Disponíveis</span>
+                                        <div className="text-3xl font-extrabold text-emerald-400 mt-2">{livrosDisponiveis}</div>
+                                        <span className="text-xs text-slate-400 mt-1 inline-block">Prontos para empréstimo</span>
+                                    </div>
+
+                                    <div className="bg-slate-800/80 border border-slate-700/60 rounded-2xl p-5">
+                                        <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Empréstimos Ativos</span>
+                                        <div className="text-3xl font-extrabold text-amber-400 mt-2">{livrosEmprestados}</div>
+                                        <span className="text-xs text-slate-400 mt-1 inline-block">Em posse dos leitores</span>
+                                    </div>
+
+                                    <div className="bg-slate-800/80 border border-slate-700/60 rounded-2xl p-5">
+                                        <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Leitores Registrados</span>
+                                        <div className="text-3xl font-extrabold text-sky-400 mt-2">{users.length}</div>
+                                        <span className="text-xs text-slate-400 mt-1 inline-block">No PostgreSQL</span>
+                                    </div>
+                                </div>
+
+                                {/* Ações Rápidas */}
+                                <div className="flex flex-wrap gap-4">
+                                    <button onClick={() => setShowAddBookModal(true)} className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2.5 rounded-xl font-medium flex items-center transition">
+                                        <IconPlus /> Cadastrar Novo Livro
+                                    </button>
+                                    <button onClick={() => setShowAddLoanModal(true)} className="bg-amber-600 hover:bg-amber-500 text-white px-4 py-2.5 rounded-xl font-medium flex items-center transition">
+                                        <IconPlus /> Novo Empréstimo
+                                    </button>
+                                    <button onClick={() => setShowAddUserModal(true)} className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 px-4 py-2.5 rounded-xl font-medium flex items-center transition">
+                                        <IconPlus /> Novo Leitor
+                                    </button>
+                                </div>
+
+                                {/* Lista de Empréstimos Ativos */}
+                                <div className="bg-slate-800/50 border border-slate-800 rounded-2xl p-6">
+                                    <h3 className="text-lg font-bold text-white mb-4">Últimos Empréstimos Realizados</h3>
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-left text-sm text-slate-300">
+                                            <thead className="text-xs uppercase bg-slate-900/60 text-slate-400">
+                                            <tr>
+                                                <th className="px-4 py-3">Livro</th>
+                                                <th className="px-4 py-3">Leitor</th>
+                                                <th className="px-4 py-3">Data Saída</th>
+                                                <th className="px-4 py-3">Devolução Prevista</th>
+                                                <th className="px-4 py-3">Status</th>
+                                                <th className="px-4 py-3 text-right">Ação</th>
+                                            </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-800">
+                                            {loans.length === 0 ? (
+                                                <tr><td colSpan="6" className="text-center py-6 text-slate-500">Nenhum empréstimo cadastrado ainda.</td></tr>
+                                            ) : (
+                                                loans.map(loan => (
+                                                    <tr key={loan.id} className="hover:bg-slate-800/40">
+                                                        <td className="px-4 py-3 font-semibold text-white">{loan.livro_titulo || `Livro #${loan.livro_id}`}</td>
+                                                        <td className="px-4 py-3">{loan.usuario_nome || `Leitor #${loan.usuario_id}`}</td>
+                                                        <td className="px-4 py-3">{loan.data_emprestimo}</td>
+                                                        <td className="px-4 py-3">{loan.data_devolucao_prevista || loan.data_devolucao}</td>
+                                                        <td className="px-4 py-3">
+                                <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${loan.status === 'EMPRESTADO' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/30' : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'}`}>
+                                  {loan.status}
+                                </span>
+                                                        </td>
+                                                        <td className="px-4 py-3 text-right">
+                                                            {loan.status === 'EMPRESTADO' && (
+                                                                <button onClick={() => handleReturnLoan(loan.id)} className="text-xs bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 rounded-lg transition">
+                                                                    Registrar Devolução
+                                                                </button>
+                                                            )}
+                                                        </td>
+                                                    </tr>
+                                                ))
+                                            )}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* TAB: LIVROS */}
+                        {activeTab === 'books' && (
+                            <div className="space-y-6">
+                                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                    <div>
+                                        <h2 className="text-2xl font-bold text-white">Acervo de Livros</h2>
+                                        <p className="text-slate-400 text-sm">Livros salvos no seu banco PostgreSQL.</p>
+                                    </div>
+                                    <button onClick={() => setShowAddBookModal(true)} className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2.5 rounded-xl font-medium flex items-center transition self-start">
+                                        <IconPlus /> Adicionar Livro
+                                    </button>
+                                </div>
+
+                                {/* Filtro e Busca */}
+                                <div className="relative">
+                                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">
+                                        <IconSearch />
+                                    </div>
+                                    <input
+                                        type="text"
+                                        value={bookSearch}
+                                        onChange={(e) => setBookSearch(e.target.value)}
+                                        placeholder="Buscar por título, autor, gênero, CDD (ex: 658-0) ou palavras-chave..."
+                                        className="w-full pl-10 pr-4 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                                    />
+                                </div>
+
+                                {/* Listagem de Livros */}
+                                {filteredBooks.length === 0 ? (
+                                    <div className="bg-slate-800/40 border border-slate-800 rounded-2xl p-12 text-center text-slate-400">
+                                        Nenhum livro encontrado no banco de dados. Clique em <strong>"+ Adicionar Livro"</strong> para cadastrar!
+                                    </div>
+                                ) : (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                                        {filteredBooks.map(book => (
+                                            <div key={book.id} className="bg-slate-800/80 border border-slate-700/70 rounded-2xl p-5 flex flex-col justify-between hover:border-indigo-500/50 transition">
+                                                <div>
+                                                    <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                            <span className="text-xs px-2.5 py-1 rounded-md bg-indigo-950 text-indigo-300 font-medium border border-indigo-800/50">
+                              {book.categoria || 'Geral'}
+                            </span>
+                                                        {book.cdd && (
+                                                            <span className="text-xs px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-400 font-mono font-semibold border border-amber-500/30">
+                                CDD: {book.cdd}
+                              </span>
+                                                        )}
+                                                        <span className="text-xs text-slate-400">Ano: {book.ano_publicacao || book.ano || 'N/A'}</span>
+                                                    </div>
+                                                    <h3 className="text-lg font-bold text-white leading-snug">{book.titulo}</h3>
+                                                    <p className="text-slate-400 text-sm mb-3">por {book.autor}</p>
+
+                                                    {book.palavras_chave && (
+                                                        <div className="mb-4">
+                                                            <span className="text-[11px] text-slate-400 block font-medium mb-1">Palavras-chave:</span>
+                                                            <div className="flex flex-wrap gap-1">
+                                                                {book.palavras_chave.split(',').map((tag, idx) => (
+                                                                    <span key={idx} className="text-[10px] bg-slate-900/80 text-slate-300 px-2 py-0.5 rounded-md border border-slate-700/60">
+                                    #{tag.trim()}
+                                  </span>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                <div className="pt-4 border-t border-slate-700/60 flex justify-between items-center text-xs">
+                                                    <div>
+                                                        <span className="text-slate-400 block">ISBN: {book.isbn || 'Não inf.'}</span>
+                                                        <span className="font-semibold text-slate-200">
+                              Disponíveis: <span className={book.disponiveis > 0 ? 'text-emerald-400' : 'text-red-400'}>{book.disponiveis}</span> / {book.quantidade}
+                            </span>
+                                                    </div>
+                                                    <button
+                                                        onClick={() => {
+                                                            setNewLoan({ ...newLoan, livro_id: book.id });
+                                                            setShowAddLoanModal(true);
+                                                        }}
+                                                        disabled={book.disponiveis <= 0}
+                                                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${book.disponiveis > 0 ? 'bg-indigo-600 hover:bg-indigo-500 text-white' : 'bg-slate-700 text-slate-500 cursor-not-allowed'}`}
+                                                    >
+                                                        {book.disponiveis > 0 ? 'Emprestar' : 'Esgotado'}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* TAB: USUÁRIOS */}
+                        {activeTab === 'users' && (
+                            <div className="space-y-6">
+                                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                    <div>
+                                        <h2 className="text-2xl font-bold text-white">Leitores Cadastrados</h2>
+                                        <p className="text-slate-400 text-sm">Leitores gravados na tabela `usuarios` do PostgreSQL.</p>
+                                    </div>
+                                    <button onClick={() => setShowAddUserModal(true)} className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2.5 rounded-xl font-medium flex items-center transition self-start">
+                                        <IconPlus /> Novo Leitor
+                                    </button>
+                                </div>
+
+                                <div className="bg-slate-800/80 border border-slate-700 rounded-2xl overflow-hidden">
+                                    <table className="w-full text-left text-sm text-slate-300">
+                                        <thead className="text-xs uppercase bg-slate-900 text-slate-400">
+                                        <tr>
+                                            <th className="px-6 py-4">ID</th>
+                                            <th className="px-6 py-4">Nome</th>
+                                            <th className="px-6 py-4">E-mail</th>
+                                            <th className="px-6 py-4">Nascimento</th>
+                                            <th className="px-6 py-4">Idade</th>
+                                        </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-700/60">
+                                        {users.length === 0 ? (
+                                            <tr><td colSpan="5" className="text-center py-6 text-slate-500">Nenhum leitor cadastrado no banco.</td></tr>
+                                        ) : (
+                                            users.map(u => (
+                                                <tr key={u.id} className="hover:bg-slate-700/30">
+                                                    <td className="px-6 py-4 font-mono text-slate-500">#{u.id}</td>
+                                                    <td className="px-6 py-4 font-medium text-white">{u.nome}</td>
+                                                    <td className="px-6 py-4 text-slate-400">{u.email}</td>
+                                                    <td className="px-6 py-4">{u.data_nascimento}</td>
+                                                    <td className="px-6 py-4"><span className="px-2 py-1 rounded bg-slate-700 text-xs font-semibold">{u.idade} anos</span></td>
+                                                </tr>
+                                            ))
+                                        )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* TAB: EMPRÉSTIMOS */}
+                        {activeTab === 'loans' && (
+                            <div className="space-y-6">
+                                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                    <div>
+                                        <h2 className="text-2xl font-bold text-white">Histórico de Empréstimos</h2>
+                                        <p className="text-slate-400 text-sm">Controle de saídas e devoluções.</p>
+                                    </div>
+                                    <button onClick={() => setShowAddLoanModal(true)} className="bg-amber-600 hover:bg-amber-500 text-white px-4 py-2.5 rounded-xl font-medium flex items-center transition self-start">
+                                        <IconPlus /> Registrar Empréstimo
+                                    </button>
+                                </div>
+
+                                <div className="bg-slate-800/80 border border-slate-700 rounded-2xl overflow-hidden">
+                                    <table className="w-full text-left text-sm text-slate-300">
+                                        <thead className="text-xs uppercase bg-slate-900 text-slate-400">
+                                        <tr>
+                                            <th className="px-6 py-4">Cód.</th>
+                                            <th className="px-6 py-4">Livro</th>
+                                            <th className="px-6 py-4">Leitor</th>
+                                            <th className="px-6 py-4">Data Empréstimo</th>
+                                            <th className="px-6 py-4">Devolução Prevista</th>
+                                            <th className="px-6 py-4">Status</th>
+                                            <th className="px-6 py-4 text-right">Ações</th>
+                                        </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-700/60">
+                                        {loans.length === 0 ? (
+                                            <tr><td colSpan="7" className="text-center py-6 text-slate-500">Nenhum empréstimo no banco.</td></tr>
+                                        ) : (
+                                            loans.map(loan => (
+                                                <tr key={loan.id} className="hover:bg-slate-700/30">
+                                                    <td className="px-6 py-4 font-mono text-slate-500">#{loan.id}</td>
+                                                    <td className="px-6 py-4 font-medium text-white">{loan.livro_titulo || `Livro #${loan.livro_id}`}</td>
+                                                    <td className="px-6 py-4">{loan.usuario_nome || `Leitor #${loan.usuario_id}`}</td>
+                                                    <td className="px-6 py-4">{loan.data_emprestimo}</td>
+                                                    <td className="px-6 py-4">{loan.data_devolucao_prevista || loan.data_devolucao}</td>
+                                                    <td className="px-6 py-4">
+                              <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${loan.status === 'EMPRESTADO' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/30' : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'}`}>
+                                {loan.status}
+                              </span>
+                                                    </td>
+                                                    <td className="px-6 py-4 text-right">
+                                                        {loan.status === 'EMPRESTADO' && (
+                                                            <button
+                                                                onClick={() => handleReturnLoan(loan.id)}
+                                                                className="text-xs bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 rounded-lg transition"
+                                                            >
+                                                                Devolver Livro
+                                                            </button>
+                                                        )}
+                                                    </td>
+                                                </tr>
+                                            ))
+                                        )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* TAB: SQL & GUIA */}
+                        {activeTab === 'sql' && (
+                            <div className="space-y-8 max-w-4xl">
+                                <div>
+                                    <h2 className="text-2xl font-bold text-white">Próximos Passos & Banco de Dados PostgreSQL</h2>
+                                    <p className="text-slate-400 text-sm">Tudo o que for cadastrado nas abas acima é persistido automaticamente neste esquema SQL.</p>
+                                </div>
+
+                                <div className="bg-slate-950 border border-slate-800 rounded-2xl p-6">
+                                    <div className="flex justify-between items-center mb-4">
+                                        <span className="text-xs font-semibold uppercase text-emerald-400 tracking-wider">Estrutura do Banco `Biblioteca_online`</span>
+                                        <span className="text-xs text-slate-500">PostgreSQL 12+</span>
+                                    </div>
+                                    <pre className="text-xs font-mono text-emerald-300 overflow-x-auto p-4 bg-slate-900 rounded-xl leading-relaxed">
+{`-- 1. Tabela de Usuários (Leitores)
+CREATE TABLE IF NOT EXISTS usuarios (
+    id SERIAL PRIMARY KEY,
+    nome VARCHAR(100) NOT NULL,
+    email VARCHAR(150) UNIQUE NOT NULL,
+    data_nascimento DATE NOT NULL,
+    idade SMALLINT NOT NULL DEFAULT 0,
+    data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 2. Tabela de Livros (com CDD e Palavras-chave)
+CREATE TABLE IF NOT EXISTS livros (
+    id SERIAL PRIMARY KEY,
+    titulo VARCHAR(200) NOT NULL,
+    autor VARCHAR(150) NOT NULL,
+    isbn VARCHAR(20) UNIQUE,
+    cdd VARCHAR(20),
+    categoria VARCHAR(50),
+    palavras_chave VARCHAR(255),
+    ano_publicacao INT,
+    quantidade INT DEFAULT 1,
+    disponiveis INT DEFAULT 1,
+    data_cadastro TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 3. Tabela de Empréstimos
+CREATE TABLE IF NOT EXISTS emprestimos (
+    id SERIAL PRIMARY KEY,
+    usuario_id INT NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+    livro_id INT NOT NULL REFERENCES livros(id) ON DELETE CASCADE,
+    data_emprestimo TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    data_devolucao_prevista DATE NOT NULL,
+    data_devolucao_real TIMESTAMP,
+    status VARCHAR(20) DEFAULT 'EMPRESTADO'
+);`}
+                  </pre>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    <footer className="mt-12 pt-4 border-t border-slate-800/80 text-center text-xs text-slate-400 font-medium">
+                        Programa desenvolvido pelo Prof. André Rafael Tortato
+                    </footer>
+                </main>
+
+                {/* MODAIS */}
+                {/* Modal Adicionar Livro */}
+                {showAddBookModal && (
+                    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                        <div className="bg-slate-800 border border-slate-700 rounded-2xl p-6 w-full max-w-md">
+                            <h3 className="text-lg font-bold text-white mb-4">Cadastrar Novo Livro (Salva no Postgres)</h3>
+                            <form onSubmit={handleAddBook} className="space-y-4 text-sm">
+                                <div>
+                                    <label className="block text-slate-400 mb-1">Título do Livro *</label>
+                                    <input
+                                        required
+                                        type="text"
+                                        value={newBook.titulo}
+                                        onChange={e => setNewBook({ ...newBook, titulo: e.target.value })}
+                                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-slate-400 mb-1">Autor *</label>
+                                    <input
+                                        required
+                                        type="text"
+                                        value={newBook.autor}
+                                        onChange={e => setNewBook({ ...newBook, autor: e.target.value })}
+                                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white"
+                                    />
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="block text-slate-400 mb-1">Código CDD (ex: 658-0)</label>
+                                        <input
+                                            type="text"
+                                            placeholder="ex: 658-0"
+                                            value={newBook.cdd}
+                                            onChange={e => setNewBook({ ...newBook, cdd: e.target.value })}
+                                            className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-slate-400 mb-1">ISBN</label>
+                                        <input
+                                            type="text"
+                                            value={newBook.isbn}
+                                            onChange={e => setNewBook({ ...newBook, isbn: e.target.value })}
+                                            className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white"
+                                        />
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="block text-slate-400 mb-1">Gênero / Categoria</label>
+                                        <input
+                                            type="text"
+                                            value={newBook.categoria}
+                                            onChange={e => setNewBook({ ...newBook, categoria: e.target.value })}
+                                            className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-slate-400 mb-1">Ano</label>
+                                        <input
+                                            type="number"
+                                            value={newBook.ano_publicacao}
+                                            onChange={e => setNewBook({ ...newBook, ano_publicacao: e.target.value })}
+                                            className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white"
+                                        />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-slate-400 mb-1">Palavras-chave (separadas por vírgula)</label>
+                                    <input
+                                        type="text"
+                                        placeholder="ex: gestão, negócios, administração"
+                                        value={newBook.palavras_chave}
+                                        onChange={e => setNewBook({ ...newBook, palavras_chave: e.target.value })}
+                                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-slate-400 mb-1">Quantidade</label>
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        value={newBook.quantidade}
+                                        onChange={e => setNewBook({ ...newBook, quantidade: e.target.value })}
+                                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white"
+                                    />
+                                </div>
+                                <div className="flex justify-end space-x-3 pt-4">
+                                    <button type="button" onClick={() => setShowAddBookModal(false)} className="px-4 py-2 text-slate-400 hover:text-white">Cancelar</button>
+                                    <button type="submit" className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-xl font-medium">Salvar no PostgreSQL</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                )}
+
+                {/* Modal Adicionar Leitor */}
+                {showAddUserModal && (
+                    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                        <div className="bg-slate-800 border border-slate-700 rounded-2xl p-6 w-full max-w-md">
+                            <h3 className="text-lg font-bold text-white mb-4">Cadastrar Novo Leitor</h3>
+                            <form onSubmit={handleAddUser} className="space-y-4 text-sm">
+                                <div>
+                                    <label className="block text-slate-400 mb-1">Nome Completo *</label>
+                                    <input
+                                        required
+                                        type="text"
+                                        value={newUser.nome}
+                                        onChange={e => setNewUser({ ...newUser, nome: e.target.value })}
+                                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-slate-400 mb-1">E-mail *</label>
+                                    <input
+                                        required
+                                        type="email"
+                                        value={newUser.email}
+                                        onChange={e => setNewUser({ ...newUser, email: e.target.value })}
+                                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white"
+                                    />
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="block text-slate-400 mb-1">Data de Nascimento *</label>
+                                        <input
+                                            required
+                                            type="date"
+                                            value={newUser.data_nascimento}
+                                            onChange={e => setNewUser({ ...newUser, data_nascimento: e.target.value })}
+                                            className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-slate-400 mb-1">Idade</label>
+                                        <input
+                                            type="number"
+                                            value={newUser.idade}
+                                            onChange={e => setNewUser({ ...newUser, idade: e.target.value })}
+                                            className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white"
+                                        />
+                                    </div>
+                                </div>
+                                <div className="flex justify-end space-x-3 pt-4">
+                                    <button type="button" onClick={() => setShowAddUserModal(false)} className="px-4 py-2 text-slate-400 hover:text-white">Cancelar</button>
+                                    <button type="submit" className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-xl font-medium">Salvar no PostgreSQL</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                )}
+
+                {/* Modal Realizar Empréstimo */}
+                {showAddLoanModal && (
+                    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+                        <div className="bg-slate-800 border border-slate-700 rounded-2xl p-6 w-full max-w-md">
+                            <h3 className="text-lg font-bold text-white mb-4">Registrar Novo Empréstimo</h3>
+                            <form onSubmit={handleAddLoan} className="space-y-4 text-sm">
+                                <div>
+                                    <label className="block text-slate-400 mb-1">Selecione o Leitor</label>
+                                    <select
+                                        value={newLoan.usuario_id}
+                                        onChange={e => setNewLoan({ ...newLoan, usuario_id: e.target.value })}
+                                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white"
+                                    >
+                                        {users.length === 0 ? (
+                                            <option value="">Nenhum leitor cadastrado</option>
+                                        ) : (
+                                            users.map(u => (
+                                                <option key={u.id} value={u.id}>{u.nome} ({u.email})</option>
+                                            ))
+                                        )}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-slate-400 mb-1">Selecione o Livro</label>
+                                    <select
+                                        value={newLoan.livro_id}
+                                        onChange={e => setNewLoan({ ...newLoan, livro_id: e.target.value })}
+                                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white"
+                                    >
+                                        {books.length === 0 ? (
+                                            <option value="">Nenhum livro cadastrado</option>
+                                        ) : (
+                                            books.map(b => (
+                                                <option key={b.id} value={b.id} disabled={b.disponiveis <= 0}>
+                                                    {b.titulo} - {b.disponiveis > 0 ? `${b.disponiveis} disponivel(is)` : 'Esgotado'}
+                                                </option>
+                                            ))
+                                        )}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-slate-400 mb-1">Prazo do Empréstimo (Dias)</label>
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        max="60"
+                                        value={newLoan.dias}
+                                        onChange={e => setNewLoan({ ...newLoan, dias: e.target.value })}
+                                        className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white"
+                                    />
+                                </div>
+                                <div className="flex justify-end space-x-3 pt-4">
+                                    <button type="button" onClick={() => setShowAddLoanModal(false)} className="px-4 py-2 text-slate-400 hover:text-white">Cancelar</button>
+                                    <button type="submit" className="bg-amber-600 hover:bg-amber-500 text-white px-4 py-2 rounded-xl font-medium">Confirmar Empréstimo</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                )}
+            </div>
+        );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+</script>
+</body>
+</html>
